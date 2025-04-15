@@ -235,6 +235,8 @@ export default class Agenda extends Component<AgendaProps, State> {
   }
 
   onDayPress = (d: DateData) => {
+    // Clear debounce protection to allow deliberate collapse
+    this.lastUserToggledOpenRef.current = false;
     this.chooseDay(d, !this.state.calendarScrollable);
   };
 
