@@ -70,7 +70,7 @@ export default class Agenda extends Component<AgendaProps, State> {
         reservationsKeyExtractor: PropTypes.Requireable<(...args: any[]) => any>;
         date: PropTypes.Requireable<any>;
         item: PropTypes.Requireable<any>;
-        theme: PropTypes.Requireable<object>; /** callback that gets called when items for a certain month should be loaded (month became visible) */
+        theme: PropTypes.Requireable<object>;
         rowHasChanged: PropTypes.Requireable<(...args: any[]) => any>;
         renderDay: PropTypes.Requireable<(...args: any[]) => any>;
         renderItem: PropTypes.Requireable<(...args: any[]) => any>;
@@ -335,6 +335,9 @@ export default class Agenda extends Component<AgendaProps, State> {
     private scrollPad;
     private calendar;
     private knob;
+    private toggleCalendarTimeout;
+    private lastUserToggleTimestampRef;
+    private lastUserToggledOpenRef;
     list: React.RefObject<ReservationList>;
     constructor(props: AgendaProps);
     componentDidMount(): void;
@@ -347,7 +350,7 @@ export default class Agenda extends Component<AgendaProps, State> {
     calendarOffset(): number;
     initialScrollPadPosition: () => number;
     setScrollPadPosition: (y: number, animated: boolean) => void;
-    toggleCalendarPosition: (open: boolean) => void;
+    toggleCalendarPosition: (open: boolean, userToggled?: boolean) => void;
     enableCalendarScrolling(enable?: boolean): void;
     loadReservations(props: AgendaProps): void;
     onDayPress: (d: DateData) => void;

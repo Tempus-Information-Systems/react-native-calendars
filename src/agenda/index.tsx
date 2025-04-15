@@ -11,7 +11,7 @@ import {
   ViewStyle,
   LayoutChangeEvent,
   NativeSyntheticEvent,
-  NativeScrollEvent
+  NativeScrollEvent, Platform
 } from 'react-native';
 
 import {extractCalendarListProps, extractReservationListProps} from '../componentUpdater';
@@ -98,11 +98,15 @@ export default class Agenda extends Component<AgendaProps, State> {
   private scrollPad: React.RefObject<any> = React.createRef();
   private calendar: React.RefObject<CalendarListImperativeMethods> = React.createRef();
   private knob: React.RefObject<View> = React.createRef();
+  private toggleCalendarTimeout: NodeJS.Timeout | undefined;
+  private lastUserToggleTimestampRef: { current: number } = { current: 0 };
+  private lastUserToggledOpenRef = { current: true };
   public list: React.RefObject<ReservationList> = React.createRef();
 
   constructor(props: AgendaProps) {
     super(props);
 
+    this.toggleCalendarTimeout = undefined
     this.style = styleConstructor(props.theme);
 
     const windowSize = Dimensions.get('window');
@@ -171,18 +175,37 @@ export default class Agenda extends Component<AgendaProps, State> {
   };
 
   setScrollPadPosition = (y: number, animated: boolean) => {
+    const maxY = this.initialScrollPadPosition();
+    const timeSinceLastToggle = Date.now() - this.lastUserToggleTimestampRef.current;
+
+    const isRecentUserToggle = timeSinceLastToggle < 1000;
+    const isUnwantedCollapse = y === maxY && this.lastUserToggledOpenRef.current;
+
+    if (Platform.OS === 'android' && isRecentUserToggle && isUnwantedCollapse) {
+      return;
+    }
+
     if (this.scrollPad?.current?.scrollTo) {
       this.scrollPad.current.scrollTo({x: 0, y, animated});
     } else {
-      // Support for RN O.61 (Expo 37)
       this.scrollPad?.current?.getNode().scrollTo({x: 0, y, animated});
     }
   };
 
-  toggleCalendarPosition = (open: boolean) => {
-    const maxY = this.initialScrollPadPosition();
-    this.setScrollPadPosition(open ? 0 : maxY, true);
-    this.enableCalendarScrolling(open);
+  toggleCalendarPosition = (open: boolean, userToggled: boolean = false) => {
+    if (userToggled) {
+      this.lastUserToggleTimestampRef.current = Date.now();
+      this.lastUserToggledOpenRef.current = open;
+    }
+
+    clearInterval(this.toggleCalendarTimeout);
+    this.toggleCalendarTimeout = setTimeout(() => {
+      const maxY = this.initialScrollPadPosition();
+      if (Platform.OS !== 'android' || userToggled) {
+        this.setScrollPadPosition(open ? 0 : maxY, true);
+      }
+      this.enableCalendarScrolling(open);
+    }, 100);
   };
 
   enableCalendarScrolling(enable = true) {
@@ -225,13 +248,14 @@ export default class Agenda extends Component<AgendaProps, State> {
 
     this.props.onCalendarToggled?.(false);
 
-    if (!optimisticScroll) {
-      this.setState({topDay: day.clone()});
+    // 🛡️ Prevent collapsing calendar immediately after a user toggle
+    const calendarIsExpanded = this.state.calendarScrollable;
+
+    if (!calendarIsExpanded && !optimisticScroll) {
+      return; // 💥 just bail
     }
 
-    this.setScrollPadPosition(this.initialScrollPadPosition(), true);
     this.calendar?.current?.scrollToDay(day, this.calendarOffset(), true);
-
     this.props.loadItemsForMonth?.(xdateToData(day));
     this.props.onDayPress?.(xdateToData(day));
   }
@@ -281,7 +305,7 @@ export default class Agenda extends Component<AgendaProps, State> {
 
     if (this.headerState === 'touched') {
       const isOpen = this.state.calendarScrollable;
-      this.toggleCalendarPosition(!isOpen);
+      this.toggleCalendarPosition(!isOpen, true);
     }
 
     this.headerState = 'idle';
@@ -293,15 +317,13 @@ export default class Agenda extends Component<AgendaProps, State> {
   };
 
   onSnapAfterDrag = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    // on Android onTouchEnd is not called if dragging was started
-    this.onTouchEnd();
     const currentY = e.nativeEvent.contentOffset.y;
     this.knobTracker.add(currentY);
-    const projectedY = currentY + this.knobTracker.estimateSpeed() * 250; /*ms*/
+    const projectedY = currentY + this.knobTracker.estimateSpeed() * 250;
     const maxY = this.initialScrollPadPosition();
+
     const snapY = projectedY > maxY / 2 ? maxY : 0;
     this.setScrollPadPosition(snapY, true);
-
     this.enableCalendarScrolling(snapY === 0);
   };
 
